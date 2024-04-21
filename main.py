@@ -6,7 +6,7 @@ from pathlib import Path
 import logging
 import subprocess
 from fnmatch import fnmatch
-
+import argparse
 
 re_version = re.compile(r'(.*[^A-Za-z])v(\d+)', re.IGNORECASE)
 re_version2 = re.compile(r'(.+)v(\d+).')
@@ -30,6 +30,17 @@ class File:
 
         self.extension = file.split('.')[-1]
 
+
+def convert_size(size_bytes, base=1024):
+    import math
+    if size_bytes == 0:
+        return "0B"
+    size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+    i = int(math.floor(math.log(size_bytes, base)))
+    p = math.pow(base, i)
+    s = round(size_bytes / p, 2)
+
+    return f'{s} {size_name[i]}'
 
 def get_size(directory):
     total_size = 0
@@ -111,115 +122,158 @@ def get_highest_version(files):
 
     return version_files, single_files
 
+class Project:
+    def __init__(self, path: str, dir_rules: dict, file_rules: dict):
+        self.path = path
+        self.dir_rules = dir_rules
+        self.file_rules = file_rules
 
+        self.ignore = []
+        self.keep = []
 
-def check_project(path: str, dir_rules: dict, file_rules: dict):
-    ignore = []
-    keep = []
+    def check_project(self, output=True):
+        self.ignore = []
+        self.keep = []
+        for root, dirs, files in os.walk(self.path):
+            # If dirs match ignore rule, they are ignored
+            # If dirs match keep rule, all the contents are kept
+            # Iterate over copy of dirs so we can remove items from original list
+            for dr in dirs[:]:
+                full_path = os.path.join(root, dr)
+                match = match_rule(self.dir_rules, full_path)
 
-    for root, dirs, files in os.walk(path):
-        # If dirs match ignore rule, they are ignored
-        # If dirs match keep rule, all the contents are kept
-        # Iterate over copy of dirs so we can remove items from original list
-        for dr in dirs[:]:
-            full_path = os.path.join(root, dr)
-            match = match_rule(dir_rules, full_path)
+                if match is None:
+                    continue
 
-            if match is None:
-                continue
+                if match is False:
+                    self.ignore.append(full_path)
+                    dirs.remove(dr)
 
-            if match is False:
-                ignore.append(full_path)
-                dirs.remove(dr)
-                print(f"{Fore.LIGHTBLACK_EX}{full_path}{Fore.RESET}")
+                    if output: print(f"{Fore.LIGHTBLACK_EX}{full_path}{Fore.RESET}")
 
-            if match is True:
-                keep.append(full_path)
-                dirs.remove(dr)
-                print(f"{Fore.MAGENTA}{full_path}{Fore.RESET}")
+                if match is True:
+                    self.keep.append(full_path)
+                    dirs.remove(dr)
+                    if output: print(f"{Fore.MAGENTA}{full_path}{Fore.RESET}")
 
-        # Print root directory if it contains files
-        if len(files) != 0:
-            print(root)
+            # Print root directory if it contains files
+            if len(files) != 0:
+                if output: print(root)
 
+            full_path_files = [os.path.join(root, file) for file in files]
+            self.__check_files(full_path_files, output)
+
+        self.test_size(output=output)
+
+    def __check_files(self, files: list, output: bool):
+        """
+        :param files: full path of files
+        """
         # Get files that should be kept
-        versioned_files, single_files = get_highest_version(files)
+        file_names = [os.path.basename(file) for file in files]
+        versioned_files, single_files = get_highest_version(file_names)
 
-        for file in files:
-            print('― ', end='')
-            full_path = os.path.join(root, file)
-            match = match_rule(file_rules, full_path)
+        for file, file_name in zip(files, file_names):
+            if output: print('― ', end='')
+            match = match_rule(self.file_rules, file)
 
             if match is None:
                 # Keep files according to versioned_files and single_files
-                if file in versioned_files or file in single_files:
-                    keep.append(full_path)
-                    color = Fore.GREEN if file in versioned_files else Fore.YELLOW
-                    print(f"{color}{file}{Fore.RESET}")
+                if file_name in versioned_files or file_name in single_files:
+                    self.keep.append(file)
+                    color = Fore.GREEN if file_name in versioned_files else Fore.YELLOW
+                    if output: print(f"{color}{file_name}{Fore.RESET}")
                 else:
-                    ignore.append(full_path)
-                    print(file)
+                    self.ignore.append(file)
+                    if output: print(file_name)
 
             if match is True:
-                keep.append(full_path)
-                print(f"{Fore.MAGENTA}{file}{Fore.RESET}")
+                self.keep.append(file)
+                if output: print(f"{Fore.MAGENTA}{file_name}{Fore.RESET}")
 
             if match is False:
-                ignore.append(full_path)
-                print(f"{Fore.LIGHTBLACK_EX}{file}{Fore.RESET}")
+                self.ignore.append(file)
+                if output: print(f"{Fore.LIGHTBLACK_EX}{file_name}{Fore.RESET}")
+
+    def archive(self, dest_path, output=True):
+        self.check_project(output=False)
+
+        for file in self.keep:
+            rel_path = os.path.relpath(file, self.path)
+            dest = os.path.join(dest_path, rel_path)
+
+            # print('Copying: ', os.path.join(dest, file))
+            if os.path.isdir(file):
+                copy_cmd = ['robocopy', file, dest, '/J', '/NJS', '/NJH', '/S', '/V']
+            else:
+                copy_cmd = ['robocopy', os.path.dirname(file), os.path.dirname(dest), os.path.basename(file), '/J',
+                            '/NJS', '/NJH', '/NDL', '/V']
+            subprocess.run(copy_cmd, shell=True)
+
+        archive_size = sum(file.stat().st_size for file in Path(dest_path).rglob('*'))
+        src_size = sum(file.stat().st_size for file in Path(self.path).rglob('*'))
+
+        if output:
+            print()
+            print(f"{Fore.GREEN}_________ARCHIVE RESULTS__________{Fore.RESET}")
+            print(f"{Fore.MAGENTA}Archive path: {dest_path}{Fore.RESET}")
+            print(f"Original size: {convert_size(src_size)}")
+            print(f"Total archive size: {convert_size(archive_size)}")
+            print(f"Saved: {convert_size(src_size-archive_size)}")
+
+    def test_size(self, output=True):
+        del_size = 0
+        keep_size = 0
+        for file in self.ignore:
+            if os.path.isdir(file):
+                del_size += sum(file.stat().st_size for file in Path(file).rglob('*'))
+            else:
+                del_size += os.path.getsize(file)
+
+        for file in self.keep:
+            if os.path.isdir(file):
+                keep_size += sum(file.stat().st_size for file in Path(file).rglob('*'))
+            else:
+                keep_size += os.path.getsize(file)
 
 
-    return ignore, keep
+
+        proj_size = sum(file.stat().st_size for file in Path(self.path).rglob('*'))
 
 
-def archive_project(dest_path: str, org_path: str, to_keep: list):
-    for file in to_keep:
-        rel_path = os.path.relpath(file, org_path)
-        dest = os.path.join(dest_path, rel_path)
+        if output:
+            print()
+            print(f"{Fore.BLUE}_________CHECK RESULTS__________{Fore.RESET}")
+            print(f"{Fore.MAGENTA}Project path: {self.path}{Fore.RESET}")
+            print(f"Total project size: {convert_size(proj_size)}")
+            print(f"Don't keep: {convert_size(del_size)}")
+            print(f"Keep: {convert_size(keep_size)}")
+
+        if del_size + keep_size != proj_size:
+            raise ValueError('Size mismatch')
+
+        if output:
+            print(f'{Fore.GREEN}Size test passed{Fore.RESET}')
+        return True
 
 
-        print('Copying: ', os.path.join(dest, file))
-        if os.path.isdir(file):
-            copy_cmd = ['robocopy', file, dest, '/J', '/NJS', '/NJH', '/NDL', '/S']
-        else:
-            copy_cmd = ['robocopy', os.path.dirname(file), os.path.dirname(dest), os.path.basename(file), '/J', '/NJS', '/NJH', '/NDL']
-        subprocess.run(copy_cmd, shell=True)
+def main():
+    parser = argparse.ArgumentParser(description="Clean and archive a project directory.")
+
+    # Subparser for the check command
+    parser.add_argument("source_path", help="Path to the project directory")
+    parser.add_argument("archive_path", help="Path to the archive directory")
+    parser.add_argument("--output", action="store_true", help="Enable verbose output")
+    parser.add_argument("--check", action="store_true", help="Archive the project directory")
 
 
+    args = parser.parse_args()
 
-
-def test(project_path, to_ignore, to_keep):
-    del_size = 0
-    keep_size = 0
-    for file in to_ignore:
-        if os.path.isdir(file):
-            del_size += sum(file.stat().st_size for file in Path(file).rglob('*'))
-        else:
-            del_size += os.path.getsize(file)
-
-    for file in to_keep:
-        if os.path.isdir(file):
-            keep_size += sum(file.stat().st_size for file in Path(file).rglob('*'))
-        else:
-            keep_size += os.path.getsize(file)
-    print(keep_size)
-
-    proj_size = sum(file.stat().st_size for file in Path(project_path).rglob('*'))
-    print(proj_size)
-    if del_size + keep_size != proj_size:
-        print('Error, size mismatch')
-        return False
-
-    return True
-
-
-if __name__ == '__main__':
     dir_rules = {
         'ignore_empty': True,
         'ignore': [
             '.*',
             '_archive',
-            'tex'
         ],
         'keep': [
             '*dailies',
@@ -235,16 +289,21 @@ if __name__ == '__main__':
         'keep': [
         ]
     }
+    if args.check:
+        proj = Project(args.source_path, dir_rules, file_rules)
+        proj.check_project()
+    else:
+        proj = Project(args.source_path, dir_rules, file_rules)
+        proj.archive(args.archive_path)
 
-    to_ignore, to_keep = check_project(r'D:\CreatureProject', dir_rules, file_rules)
+if __name__ == '__main__':
+    main()
 
-    if test(r'D:\CreatureProject', to_ignore, to_keep):
-        print('All tests passed')
-        archive_project(r'D:\CreatureProject_archive', r'D:\CreatureProject', to_keep)
-
-        archive_size = sum(file.stat().st_size for file in Path(r'D:\CreatureProject_archive').rglob('*'))
-        print(archive_size)
-        test(r'D:\CreatureProject', to_ignore, to_keep)
+    # archive_path = r'D:\CreatureProject_archive'
+    # proj.archive(archive_path)
+    #
+    # archive_size = sum(file.stat().st_size for file in Path(archive_path).rglob('*'))
+    # print(archive_size)
 
 
 
