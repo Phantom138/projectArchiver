@@ -175,7 +175,7 @@ class Project:
 
         for file, file_name in zip(files, file_names):
             if output: print('― ', end='')
-            match = match_rule(self.file_rules, file)
+            match = match_rule( self.file_rules, file)
 
             if match is None:
                 # Keep files according to versioned_files and single_files
