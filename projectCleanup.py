@@ -75,7 +75,7 @@ def get_highest_version(src_files):
     mx_version = -1
 
     prev_file = File('s_v01.extention')
-    mx_file = prev_file.file
+    mx_file = [prev_file.file]
 
     version_files = []
     single_files = []
@@ -135,11 +135,19 @@ def match_rule(rules: dict, full_path: str, single_files: list = None, version_f
     file = os.path.basename(full_path)
 
     for rule in rules['ignore']:
-        if fnmatch(file, rule):
+        if os.path.isdir(full_path):
+            if rule.startswith('/') and fnmatch('/'+file, rule):
+                return False, f'Ignore ({rule})', Colors.DARK_GRAY
+
+        elif fnmatch(file, rule):
             return False, f'Ignore ({rule})', Colors.DARK_GRAY
 
     for rule in rules['keep']:
-        if fnmatch(file, rule):
+        if os.path.isdir(full_path):
+            if rule.startswith('/') and fnmatch('/'+file, rule):
+                return True, f'Keep ({rule})', Colors.MAGENTA
+
+        elif fnmatch(file, rule):
             return True, f'Keep ({rule})', Colors.MAGENTA
 
     # Version matching
@@ -157,10 +165,9 @@ def match_rule(rules: dict, full_path: str, single_files: list = None, version_f
 
 
 class Project:
-    def __init__(self, path: str, dir_rules: dict, file_rules: dict):
+    def __init__(self, path: str, rules: dict):
         self.path = path
-        self.dir_rules = dir_rules
-        self.file_rules = file_rules
+        self.rules = rules
 
         self.ignore = []
         self.keep = []
@@ -181,7 +188,7 @@ class Project:
             # Check directories
             for dr in dirs[:]:
                 full_path = os.path.join(root, dr)
-                match, reason, out_color = match_rule(self.dir_rules, full_path, single_dir, ver_dir)
+                match, reason, out_color = match_rule(self.rules, full_path, single_dir, ver_dir)
 
                 if match is None:
                     continue
@@ -223,7 +230,7 @@ class Project:
         versioned_files, single_files = get_highest_version(file_names)
 
         for file, file_name in zip(files, file_names):
-            match, reason, out_color = match_rule(self.file_rules, file, single_files, versioned_files)
+            match, reason, out_color = match_rule(self.rules, file, single_files, versioned_files)
 
             if match is True:
                 self.keep.append(file)
@@ -338,34 +345,27 @@ def main():
         proj.archive(args.archive_path)
 
 def quick_test():
-    dir_rules = {
+    rules = {
         'ignore_empty': True,
         'ignore': [
-            '.*',
-            '_archive',
-        ],
-        'keep': [
-            '*dailies',
-        ]
-    }
-
-    file_rules = {
-        'ignore_empty': True,
-        'ignore': [
+            '/.*',
+            '/_archive',
             '*.tx',
-            'Thumbs.db'
+            'Thumbs.db',
         ],
         'keep': [
+            '/*dailies',
         ]
     }
 
-    proj = Project(r'D:\CreatureProject', dir_rules, file_rules)
+
+    proj = Project(r'D:\CreatureProject', rules)
     proj.check_project(output=True, verbose=True)
 
 
 if __name__ == '__main__':
 
-    main()
+    quick_test()
 
     # archive_path = r'D:\CreatureProject_archive'
     # proj.archive(archive_path)
