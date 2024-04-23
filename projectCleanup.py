@@ -1,6 +1,6 @@
 import os
 import re
-from pathlib import Path
+from pathlib import Path, PurePath
 import subprocess
 from fnmatch import fnmatch
 
@@ -113,12 +113,12 @@ def get_highest_version(src_files):
 
 
 
-def match_rule(rules: dict, full_path: str, single_files: list = None, version_files: list = None):
+def match_rule(rules: dict, path: Path, single_files: list = None, version_files: list = None):
     """
     :param version_files: list of files that have the highest version
     :param single_files: param used for version matching
     :param rules: dict containing rules for keeping/ignoring files
-    :param full_path: full path of file or directory
+    :param path: full path of file or directory
     :return: False if file should be ignored, True if file should be kept
     If file does not match any rule, it returns None
     """
@@ -128,36 +128,38 @@ def match_rule(rules: dict, full_path: str, single_files: list = None, version_f
     if version_files is None:
         version_files = []
 
+
     if rules['ignore_empty']:
-        if get_size(full_path) == 0:
+        if get_size(str(path)) == 0:
             return False, 'Empty', Colors.DARK_GRAY
 
-    file = os.path.basename(full_path)
+    # Convert path to string with normal / for easier matching
+    # Also get file names for version matching
+    if path.is_dir():
+        path_str = path.as_posix() + '/'
+    elif path.is_file():
+        path_str = path.as_posix()
+    else:
+        raise ValueError(f'{path} is not dir or file')
 
     for rule in rules['ignore']:
-        if os.path.isdir(full_path):
-            if rule.startswith('/') and fnmatch('/'+file, rule):
-                return False, f'Ignore ({rule})', Colors.DARK_GRAY
-
-        elif fnmatch(file, rule):
+        if fnmatch(path_str, rule):
             return False, f'Ignore ({rule})', Colors.DARK_GRAY
 
     for rule in rules['keep']:
-        if os.path.isdir(full_path):
-            if rule.startswith('/') and fnmatch('/'+file, rule):
-                return True, f'Keep ({rule})', Colors.MAGENTA
+        if fnmatch(path_str, rule):
 
-        elif fnmatch(file, rule):
             return True, f'Keep ({rule})', Colors.MAGENTA
 
+
     # Version matching
-    if file in version_files:
+    if path.name in version_files:
         return True, 'High version', Colors.GREEN
 
-    if os.path.isfile(full_path) and file in single_files:
+    if path.is_file() and path.name in single_files:
         return True, 'Unique', Colors.YELLOW
 
-    if file not in single_files and file not in version_files:
+    if path.name not in single_files and path.name not in version_files:
         return False, 'Low version', Colors.DARK_GRAY
 
     return None, '', Colors.RESET
@@ -183,27 +185,31 @@ class Project:
         self.ignore = []
         self.keep = []
         for root, dirs, files in os.walk(self.path):
+            # Changes to forward slashes and adds / to the end of directories
+            # This is for easier pattern matching later on
+            root = Path(root)
+
             ver_dir, single_dir = get_highest_version(dirs)
 
             # Check directories
             for dr in dirs[:]:
-                full_path = os.path.join(root, dr)
-                match, reason, out_color = match_rule(self.rules, full_path, single_dir, ver_dir)
+                dr_path = root.joinpath(dr)
+                match, reason, out_color = match_rule(self.rules, dr_path, single_dir, ver_dir)
 
                 if match is None:
                     continue
 
                 if match is False:
-                    self.ignore.append(full_path)
+                    self.ignore.append(dr_path)
                     dirs.remove(dr)
 
                 if match is True:
-                    self.keep.append(full_path)
+                    self.keep.append(dr_path)
                     dirs.remove(dr)
 
                 if output:
                     reason = f"{reason:>20}  " if verbose else ''
-                    print(f"{out_color}{reason}{full_path}{Colors.RESET}")
+                    print(f"{out_color}{reason}{dr_path}{Colors.RESET}")
 
             # Print root directory if it contains files
             if len(files) != 0 and output:
@@ -211,8 +217,8 @@ class Project:
                 print(f"{sep}{root}")
 
             # Check files
-            full_path_files = [os.path.join(root, file) for file in files]
-            self.__check_files(full_path_files, output, verbose)
+            file_paths = [root.joinpath(f) for f in files]
+            self.__check_files(file_paths, output, verbose)
 
         self.test_size(output=output)
 
@@ -226,10 +232,10 @@ class Project:
         """
         # Get files that should be kept
 
-        file_names = [os.path.basename(file) for file in files]
+        file_names = [f.name for f in files]
         versioned_files, single_files = get_highest_version(file_names)
 
-        for file, file_name in zip(files, file_names):
+        for file in files:
             match, reason, out_color = match_rule(self.rules, file, single_files, versioned_files)
 
             if match is True:
@@ -240,7 +246,7 @@ class Project:
 
             if output:
                 reason = f'{reason:>20}  ' if verbose else ''
-                print(f"{out_color}{reason}-  {file_name}{Colors.RESET}")
+                print(f"{out_color}{reason}-  {file.name}{Colors.RESET}")
 
     def archive(self, dest_path, output=True):
         """
@@ -305,56 +311,98 @@ class Project:
         return True
 
 
+def rules_from_file(file, output=False):
+    # Read lines from file
+    with open(file) as f:
+        lines = [line.rstrip() for line in f if line.strip()]
+
+    # Build rule dictionary
+    available_rules = ['ignore_empty', 'check_versions']
+    rules = {
+        'ignore_empty': False,
+        'check_versions': False,
+        'keep': [],
+        'ignore': []
+    }
+    for line in lines:
+        # Rules are defined with the @ character
+        if line.startswith('@'):
+            res = re.search(r'@(.*):\s*([A-Za-z0-9]*)', line)
+            rule = res.group(1)
+            value = res.group(2)
+
+            if rule not in available_rules:
+                raise ValueError(f"Invalid rule {rule} in {line}")
+
+            # Validate input
+            if value in ['True', 'true', '1']:
+                rules[rule] = True
+            elif value in ['False', 'false', '0']:
+                rules[rule] = False
+            else:
+                raise ValueError(f"Invalid value {value} in {line}")
+
+        # Ignore is with !
+        elif line.startswith('!'):
+            rules['ignore'].append(line[1:])
+
+        # If nothing else matches, it must be a rule to keep
+        else:
+            rules['keep'].append(line)
+
+    if output:
+        print(Colors.MAGENTA, end='')
+        for rule in available_rules:
+            print(f'{rule}: {rules[rule]}')
+
+        print(Colors.GREEN)
+        for keep in rules['keep']:
+            print(keep)
+
+        print(Colors.RED, end='')
+        for ignore in rules['ignore']:
+            print(ignore)
+
+        print(Colors.RESET)
+    return rules
+
 def main():
     parser = argparse.ArgumentParser(description="Clean and archive a project directory.")
 
     # Subparser for the check command
     parser.add_argument("source_path", help="Path to the project directory")
     parser.add_argument("archive_path", help="Path to the archive directory")
+    parser.add_argument("--check-rules", action="store_true", help="Check if the rules are detected properly")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--check", action="store_true", help="Archive the project directory")
 
-
     args = parser.parse_args()
 
-    dir_rules = {
-        'ignore_empty': True,
-        'ignore': [
-            '.*',
-            '_archive',
-        ],
-        'keep': [
-            '*dailies',
-        ]
-    }
+    rule_file = "./rules.txt"
+    if args.check_rules:
+        rules_from_file("./rules.txt", output=True)
+        return
+    else:
+        rules = rules_from_file("./rules.txt", output=False)
 
-    file_rules = {
-        'ignore_empty': True,
-        'ignore': [
-            '*.tx',
-            'Thumbs.db'
-        ],
-        'keep': [
-        ]
-    }
     if args.check:
-        proj = Project(args.source_path, dir_rules, file_rules)
+        proj = Project(args.source_path, rules)
         proj.check_project(verbose=args.verbose)
     else:
-        proj = Project(args.source_path, dir_rules, file_rules)
+        proj = Project(args.source_path, rules)
         proj.archive(args.archive_path)
 
 def quick_test():
     rules = {
         'ignore_empty': True,
         'ignore': [
-            '/.*',
-            '/_archive',
+            '*/.*/',
+            '*/_archive/',
             '*.tx',
             'Thumbs.db',
         ],
         'keep': [
-            '/*dailies',
+            '*/dailies/',
         ]
     }
 
@@ -364,8 +412,7 @@ def quick_test():
 
 
 if __name__ == '__main__':
-
-    quick_test()
+    main()
 
     # archive_path = r'D:\CreatureProject_archive'
     # proj.archive(archive_path)
