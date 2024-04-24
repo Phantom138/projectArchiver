@@ -312,9 +312,14 @@ class Project:
 
 
 def rules_from_file(file, output=False):
-    # Read lines from file
+    lines = []
+    # Read lines from file and ignore comments
     with open(file) as f:
-        lines = [line.rstrip() for line in f if line.strip()]
+        file_path = os.path.realpath(f.name)
+        for line in f:
+            pattern = line.split('#', 1)[0].strip()
+            if pattern:
+                lines.append(pattern)
 
     # Build rule dictionary
     available_rules = ['ignore_empty', 'check_versions']
@@ -344,13 +349,15 @@ def rules_from_file(file, output=False):
 
         # Ignore is with !
         elif line.startswith('!'):
-            rules['ignore'].append(line[1:])
+            rules['ignore'].append(line)
 
         # If nothing else matches, it must be a rule to keep
         else:
             rules['keep'].append(line)
 
     if output:
+        print(f"Rules from: {file_path}")
+        print("-----------")
         print(Colors.MAGENTA, end='')
         for rule in available_rules:
             print(f'{rule}: {rules[rule]}')
@@ -413,12 +420,6 @@ def quick_test():
 
 if __name__ == '__main__':
     main()
-
-    # archive_path = r'D:\CreatureProject_archive'
-    # proj.archive(archive_path)
-    #
-    # archive_size = sum(file.stat().st_size for file in Path(archive_path).rglob('*'))
-    # print(archive_size)
 
 
 
