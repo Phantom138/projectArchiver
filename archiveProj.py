@@ -5,6 +5,7 @@ import subprocess
 from fnmatch import fnmatch
 
 import argparse
+from pprint import pprint
 
 
 class Colors:
@@ -72,45 +73,51 @@ def get_size(path):
         return sum(file.stat().st_size for file in Path(path).rglob('*') if file.is_file())
 
 
-def get_highest_version(src_files):
+def get_highest_version(src_files, num):
+    if num == 0:
+        return [], []
+
     mx_version = -1
 
     prev_file = File('s_v01.extention')
     mx_file = [prev_file.file]
 
-    version_files = []
+    version_chunks = []
     single_files = []
     files = src_files.copy()
     files.sort(key=lambda f: os.path.splitext(f)[1])
-
+    print(files)
+    chunk = []
+    sub_chunk = []
     for f in files:
         # Get info from file name
         file = File(f)
+
         # Unversioned files are added to single_files list
         if file.version is None:
             single_files.append(file.file)
             prev_file = file
             continue
 
-        if file.base_name != prev_file.base_name or file.extension != prev_file.extension:
-            # This means we have a new file name
-            mx_version = -1
-            version_files.extend(mx_file)
-
-        if file.version > mx_version:
-            mx_file = [file.file]
-            mx_version = file.version
-
-        elif file.version == mx_version:
-            # This keeps files with different extensions but same version
-            mx_file.append(file.file)
-            mx_version = file.version
+        if file.base_name == prev_file.base_name and file.extension == prev_file.extension:
+            chunk.append(file.file)
+            # if file.version == prev_file.version:
+            #     sub_chunk.append(file.file)
+            # else:
+            #     sub_chunk = [file.file]
+            #     chunk.append(sub_chunk)
+        else:
+            # Means we have a new chunk
+            # We save the current one, and create a new one
+            if len(chunk) != 0:
+                print(chunk)
+                version_chunks.append(chunk)
+            chunk = [file.file]
 
         prev_file = file
-
-    version_files.extend(mx_file)
-
-    return version_files, single_files
+    print(chunk)
+    # pprint(version_chunks)
+    return version_chunks, single_files
 
 
 
@@ -154,8 +161,13 @@ def match_rule(rules: dict, path: Path, single_files: list = None, version_files
 
 
     # Version matching
-    if path.name in version_files:
-        return True, 'High version', Colors.GREEN
+    if rules['keep_versions'] == 0:
+        return None, '', Colors.RESET
+
+    for chunk in version_files:
+        for i, sub_chunk in enumerate(chunk):
+            if path.name in sub_chunk:
+                return True, f'High version ({i})', Colors.GREEN
 
     if path.is_file() and path.name in single_files:
         return True, 'Unique', Colors.YELLOW
@@ -190,7 +202,7 @@ class Project:
             # This is for easier pattern matching later on
             root = Path(root)
 
-            ver_dir, single_dir = get_highest_version(dirs)
+            ver_dir, single_dir = get_highest_version(dirs, self.rules['keep_versions'])
 
             # Check directories
             for dr in dirs[:]:
@@ -234,10 +246,13 @@ class Project:
         # Get files that should be kept
 
         file_names = [f.name for f in files]
-        versioned_files, single_files = get_highest_version(file_names)
+        ver_files, single_files = get_highest_version(file_names, self.rules['keep_versions'])
 
         for file in files:
-            match, reason, out_color = match_rule(self.rules, file, single_files, versioned_files)
+            match, reason, out_color = match_rule(self.rules, file, single_files, ver_files)
+
+            if match is None:
+                self.keep.append(file)
 
             if match is True:
                 self.keep.append(file)
@@ -323,10 +338,10 @@ def rules_from_file(file, output=False):
                 lines.append(pattern)
 
     # Build rule dictionary
-    available_rules = ['ignore_empty', 'check_versions']
+    available_rules = ['ignore_empty', 'keep_versions']
     rules = {
         'ignore_empty': False,
-        'check_versions': False,
+        'check_versions': 1,
         'keep': [],
         'ignore': []
     }
@@ -334,6 +349,7 @@ def rules_from_file(file, output=False):
         # Rules are defined with the @ character
         if line.startswith('@'):
             res = re.search(r'@(.*):\s*([A-Za-z0-9]*)', line)
+
             rule = res.group(1)
             value = res.group(2)
 
@@ -341,10 +357,12 @@ def rules_from_file(file, output=False):
                 raise ValueError(f"Invalid rule {rule} in {line}")
 
             # Validate input
-            if value in ['True', 'true', '1']:
+            if value in ['True', 'true']:
                 rules[rule] = True
-            elif value in ['False', 'false', '0']:
+            elif value in ['False', 'false']:
                 rules[rule] = False
+            elif value.isdigit():
+                rules[rule] = int(value)
             else:
                 raise ValueError(f"Invalid value {value} in {line}")
 
