@@ -86,7 +86,6 @@ def get_highest_version(src_files, num):
     single_files = []
     files = src_files.copy()
     files.sort(key=lambda f: os.path.splitext(f)[1])
-    print(files)
     chunk = []
     sub_chunk = []
     for f in files:
@@ -100,23 +99,27 @@ def get_highest_version(src_files, num):
             continue
 
         if file.base_name == prev_file.base_name and file.extension == prev_file.extension:
-            chunk.append(file.file)
-            # if file.version == prev_file.version:
-            #     sub_chunk.append(file.file)
-            # else:
-            #     sub_chunk = [file.file]
-            #     chunk.append(sub_chunk)
+            if file.version == prev_file.version:
+                sub_chunk.append(file.file)
+            else:
+                sub_chunk = [file.file]
+                chunk.append(sub_chunk)
         else:
             # Means we have a new chunk
             # We save the current one, and create a new one
             if len(chunk) != 0:
-                print(chunk)
-                version_chunks.append(chunk)
-            chunk = [file.file]
+                # Sort based on version
+                chunk.sort(key=lambda x: File(x[0]).version)
+                version_chunks.append(chunk[-num:])
+            sub_chunk = [file.file]
+            chunk = [sub_chunk]
 
         prev_file = file
-    print(chunk)
-    # pprint(version_chunks)
+
+    # Sort again based on version
+    chunk.sort(key=lambda x: File(x[0]).version)
+    version_chunks.append(chunk[-num:])
+
     return version_chunks, single_files
 
 
