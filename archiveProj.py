@@ -74,6 +74,8 @@ def get_size(path):
 
 
 def get_highest_version(src_files, num):
+    # Rather inefficient function
+    # TODO: Make this better
     if num == 0:
         return [], []
 
@@ -168,9 +170,9 @@ def match_rule(rules: dict, path: Path, single_files: list = None, version_files
         return None, '', Colors.RESET
 
     for chunk in version_files:
-        for i, sub_chunk in enumerate(chunk):
+        for i, sub_chunk in enumerate(reversed(chunk)):
             if path.name in sub_chunk:
-                return True, f'High version ({i})', Colors.GREEN
+                return True, f'High version ({i+1})', Colors.GREEN
 
     if path.is_file() and path.name in single_files:
         return True, 'Unique', Colors.YELLOW
