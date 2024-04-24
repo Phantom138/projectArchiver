@@ -32,7 +32,7 @@ class Colors:
 class File:
     re_version = re.compile(r'(.*[^A-Za-z])v(\d+)', re.IGNORECASE)
     re_version2 = re.compile(r'(.+)v(\d+).')
-    re_version3 = re.compile(r'^()v(\d+)$')
+    re_version3 = re.compile(r'^()v(\d+)(.*)')
 
     def __init__(self, file):
         match = re.search(self.re_version, file)
@@ -70,6 +70,7 @@ def get_size(path):
 
     elif os.path.isdir(path):
         return sum(file.stat().st_size for file in Path(path).rglob('*') if file.is_file())
+
 
 def get_highest_version(src_files):
     mx_version = -1
@@ -135,6 +136,7 @@ def match_rule(rules: dict, path: Path, single_files: list = None, version_files
 
     # Convert path to string with normal / for easier matching
     # Also get file names for version matching
+
     if path.is_dir():
         path_str = path.as_posix() + '/'
     elif path.is_file():
@@ -148,7 +150,6 @@ def match_rule(rules: dict, path: Path, single_files: list = None, version_files
 
     for rule in rules['keep']:
         if fnmatch(path_str, rule):
-
             return True, f'Keep ({rule})', Colors.MAGENTA
 
 
@@ -349,7 +350,7 @@ def rules_from_file(file, output=False):
 
         # Ignore is with !
         elif line.startswith('!'):
-            rules['ignore'].append(line)
+            rules['ignore'].append(line[1:])
 
         # If nothing else matches, it must be a rule to keep
         else:
@@ -373,7 +374,7 @@ def rules_from_file(file, output=False):
         print(Colors.RESET)
     return rules
 
-def main():
+def archive_CLI():
     parser = argparse.ArgumentParser(description="Clean and archive a project directory.")
 
     # Subparser for the check command
@@ -419,7 +420,7 @@ def quick_test():
 
 
 if __name__ == '__main__':
-    main()
+    archive_CLI()
 
 
 
