@@ -1,0 +1,12 @@
+# RULES
+@ignore_empty: True
+@keep_versions: 2
+
+
+!*.tx           #ignores files with the .tx extension
+!*/_archive/    #ignores all directories that are named archive
+!*/Thumbs.db    #ignores all files named Thumbs.db
+!*/.*/          #ignores directories starting with .
+
+*/my_file.txt   #Keeps all files named my_file.txt
+*/mdl/*.ma      #Keeps files ending in .ma in every mdl directory it finds
