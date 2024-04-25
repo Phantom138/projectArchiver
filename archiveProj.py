@@ -409,12 +409,13 @@ def archive_CLI():
 
     args = parser.parse_args()
 
-    rule_file = "./rules.txt"
+    pth = os.getcwd()
+    rule_file = os.path.join(os.getcwd(),'rules.txt')
     if args.check_rules:
-        rules_from_file("./rules.txt", output=True)
+        rules_from_file(rule_file, output=True)
         return
     else:
-        rules = rules_from_file("./rules.txt", output=False)
+        rules = rules_from_file(rule_file, output=False)
 
     if args.check:
         proj = Project(args.source_path, rules)
