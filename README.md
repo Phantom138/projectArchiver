@@ -16,12 +16,15 @@ python archiveProj.py <source_path> <archive_path> --check
 ```
 Replace `<source_path>` with the path to the project directory you want to archive, and `<archive_path>` with the desired location for the archived project.
 
+
 By adding also the `--output` flag, you can see which files are matched and which are not.
+
 By also adding the `--verbose` flag, you can see more detailed output.
 
 ```bash
 python archiveProj.py <source_path> <archive_path> --check --output --verbose
 ```
+
 
 When running in CMD, appending `| more` at the end is going to enable you to go line-by-line. It is recommended to use it when the output is too long to see.
 
@@ -29,12 +32,15 @@ When running in CMD, appending `| more` at the end is going to enable you to go 
 python archiveProj.py <source_path> <archive_path> --check --output --verbose | more
 ```
 
+
 Once you are happy with the file selection, archive by using the following command:
-`<archive_path>` should be an empty/non-existent directory
 
 ```bash
 python archiveProj.py <source_path> <archive_path>
 ```
+`<archive_path>` should be an empty/non-existent directory
+
+
 
 ### Parameters
 
@@ -44,6 +50,7 @@ python archiveProj.py <source_path> <archive_path>
 | `--verbose`        | Enable verbose output.                                  |
 | `--check`          | Show the data to be kept or ignored before archiving.   |
 | `--output`         | Enables output during the checking process.             |
+
 
 
 ### Rule Specification
