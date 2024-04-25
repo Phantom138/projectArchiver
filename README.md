@@ -1,7 +1,9 @@
 # Project Archiver
 
 Python CLI tool for archiving large projects by version and pattern matching.
+
 Currently only working in Windows.
+
 Not the most performant tool, sruggles with directories that have more than 50k files. It is meant for smaller directories with large files.
 
 ## Usage
