@@ -238,7 +238,7 @@ class Project:
             file_paths = [root.joinpath(f) for f in files]
             self.__check_files(file_paths, output, verbose)
 
-        self.test_size(output=output)
+        self.test_size(output=True)
 
     def __check_files(self, files: list, output: bool, verbose: bool):
         """
@@ -404,6 +404,7 @@ def archive_CLI():
     parser.add_argument("source_path", help="Path to the project directory")
     parser.add_argument("archive_path", help="Path to the archive directory")
     parser.add_argument("--check-rules", action="store_true", help="Check if the rules are detected properly")
+    parser.add_argument("--output", action="store_true", help="Output files during check")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--check", action="store_true", help="Archive the project directory")
 
@@ -419,7 +420,7 @@ def archive_CLI():
 
     if args.check:
         proj = Project(args.source_path, rules)
-        proj.check_project(verbose=args.verbose)
+        proj.check_project(output=args.output, verbose=args.verbose)
     else:
         proj = Project(args.source_path, rules)
         proj.archive(args.archive_path)
