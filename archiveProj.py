@@ -79,10 +79,7 @@ def get_highest_version(src_files, num):
     if num == 0:
         return [], []
 
-    mx_version = -1
-
     prev_file = File('s_v01.extention')
-    mx_file = [prev_file.file]
 
     version_chunks = []
     single_files = []
