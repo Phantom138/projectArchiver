@@ -6,6 +6,12 @@ Currently only working in Windows.
 
 Not the most performant tool, sruggles with directories that have more than 50k files. It is meant for smaller directories with large files.
 
+## Installation
+Install python 3.10 or higher.
+When installing tick `Add python to PATH`
+
+Download the github project and navigate to the download location in the terminal.
+
 ## Usage
 
 ### Basic Usage
@@ -56,7 +62,10 @@ python archiveProj.py <source_path> <archive_path>
 ### Rule Specification
 
 The Project Archiver allows you to specify rules for managing project files and directories in a `rules.txt` file.
+For an example usage, see the [rules.txt](rules.txt) file
+
 Specify options using `@` decorator.
+Comments are preceded by `#`.
 Supported options: `ignore_empty, keep_versions`
 
 - `@ignore_empty:` specifies if it should ignore empty directories/files. Note: directory is considered empty when it's size is `0kb`. Default: False
