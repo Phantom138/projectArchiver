@@ -1,6 +1,6 @@
 # RULES
 @ignore_empty: True
-@keep_versions: 2
+@keep_versions: 1
 
 
 !*.tx           #ignores files with the .tx extension
